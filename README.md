@@ -2,11 +2,30 @@
 
 > A local-first Windows desktop widget for viewing Codex usage limits and recent task token activity.
 
-第一个小工具试试水，不要骂嘤嘤。不知道有没有什么bug。会持续更新！！
+![Token Trace：Windows 桌面 Codex 用量小组件](docs/images/token-trace-hero.png)
+
+[![Latest release](https://img.shields.io/github/v/release/lolikaaaaa/token-trace?include_prereleases&label=最新版&color=20a9b5)](https://github.com/lolikaaaaa/token-trace/releases/latest)
+![Platform](https://img.shields.io/badge/平台-Windows%2010%20%2F%2011-42a5c6)
+![Local first](https://img.shields.io/badge/数据-Local--first-8a74d6)
+
+[⬇️ 下载最新版](https://github.com/lolikaaaaa/token-trace/releases/latest) · [🐛 报告问题](https://github.com/lolikaaaaa/token-trace/issues) · [⭐ 喜欢的话点个 Star](https://github.com/lolikaaaaa/token-trace)
+
+第一个小工具试试水，不要骂嘤嘤。不知道有没有什么 bug。会持续更新！！
 
 > Token Trace 是一个轻量的 Windows 桌面悬浮组件。它在本机连接 Codex App Server，显示当前账户的 5 小时/每周剩余额度、重置时间，以及当天最近任务和相应 Token 记录。
 
 > 🐰 嗨！这是我第一次从零做 Windows 小工具。很多地方都是一边学习、一边和 Codex 打磨出来的。它可能还不完美，但这只小兔子已经可以认真替你看着用量啦。遇到问题欢迎提 Issue，也请温柔地告诉我，嘻嘻。
+
+## 一眼看懂
+
+- **看额度**：显示真实 5h / 7d 剩余比例与 Reset 倒计时。
+- **看任务**：按今天 / 本周查看最近任务、Token 消耗和更新时间。
+- **看趋势**：按 7 天 / 30 天 / 本月汇总本机可读取的任务记录。
+- **换主题**：深青、浅紫、浅蓝三种完整主题，适配不同桌面。
+
+![Token Trace 任务列表与使用统计](docs/images/features-tasks-statistics.png)
+
+![Token Trace 三种主题](docs/images/themes.png)
 
 ## 功能
 
