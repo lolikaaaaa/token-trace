@@ -2,8 +2,9 @@
 
 > A local-first Windows desktop widget for viewing Codex usage limits and recent task token activity.
 
-第一个小工具试试水，不要骂嘤嘤。不知道有没有什么bug。会持续更新。。。
-Token Trace 是一个轻量的 Windows 桌面悬浮组件。它在本机连接 Codex App Server，显示当前账户的 5 小时/每周剩余额度、重置时间，以及当天最近任务和相应 Token 记录。
+第一个小工具试试水，不要骂嘤嘤。不知道有没有什么bug。会持续更新！！
+
+> Token Trace 是一个轻量的 Windows 桌面悬浮组件。它在本机连接 Codex App Server，显示当前账户的 5 小时/每周剩余额度、重置时间，以及当天最近任务和相应 Token 记录。
 
 当前为早期测试版（v0.1），不是 OpenAI 官方产品。
 
