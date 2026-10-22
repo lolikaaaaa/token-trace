@@ -16,7 +16,9 @@ src-tauri/target/
 .webview2/
 release/
 Token Trace.exe
+Token Trace*.exe
 TokenTraceSetup/
+media/
 
 # Local-only Windows helpers use a machine-specific toolchain layout.
 *.cmd

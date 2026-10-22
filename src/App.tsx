@@ -15,14 +15,37 @@ type UsageWindow = { usedPercent: number; remainingPercent: number; windowDurati
 type RealUsage = { primary: UsageWindow; secondary: UsageWindow | null; planType: string | null; source: string };
 type RecentTask = { id: string; title: string; createdAt: number; updatedAt: number; tokenCount: number | null; tokenSource: "local-session" | "account-estimate" | null };
 type DashboardSnapshot = { usage: RealUsage; tasks: RecentTask[]; tasksAvailable: boolean };
-
-const CHART_VALUES = [6.2, 9.4, 7.1, 11.8, 8.6, 14.2, 12.9];
+type StatisticsRange = "7天" | "30天" | "本月";
+type StatisticsBucket = { label: string; title: string; value: number };
 
 function isToday(unixSeconds:number,now:number){return new Date(unixSeconds*1000).toDateString()===new Date(now).toDateString()}
+function startOfLocalWeek(now:number){const today=startOfLocalDay(new Date(now));const weekday=today.getDay()||7;return addLocalDays(today,1-weekday)}
 function formatClock(unixSeconds:number){return new Date(unixSeconds*1000).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}
 function formatRelative(unixSeconds:number,now:number){const minutes=Math.max(0,Math.floor((now-unixSeconds*1000)/60000));return minutes<1?"刚刚":minutes<60?`${minutes}分钟前`:minutes<1440?`${Math.floor(minutes/60)}小时前`:`${Math.floor(minutes/1440)}天前`}
 function formatTokens(value:number|null){if(value===null)return "暂不可用";if(value>=1_000_000)return `约 ${(value/1_000_000).toFixed(2)}M`;if(value>=1_000)return `约 ${(value/1_000).toFixed(value>=100_000?0:1)}K`;return `约 ${value}`}
 function formatTaskTokens(task:RecentTask){const value=task.tokenCount;if(value===null)return "暂不可用";const prefix=task.tokenSource==="account-estimate"?"约 ":"";if(value>=1_000_000)return `${prefix}${(value/1_000_000).toFixed(2)}M`;if(value>=1_000)return `${prefix}${(value/1_000).toFixed(value>=100_000?0:1)}K`;return `${prefix}${value}`}
+function compactTokenValue(value:number){if(value>=1_000_000)return `${(value/1_000_000).toFixed(2)}M`;if(value>=1_000)return `${(value/1_000).toFixed(value>=100_000?0:1)}K`;return `${Math.round(value)}`}
+function startOfLocalDay(value:Date){return new Date(value.getFullYear(),value.getMonth(),value.getDate())}
+function addLocalDays(value:Date,days:number){const next=new Date(value);next.setDate(next.getDate()+days);return next}
+function dateLabel(value:Date){return `${value.getMonth()+1}/${value.getDate()}`}
+function taskTokensBetween(tasks:RecentTask[],start:Date,end:Date){const from=start.getTime()/1000;const to=end.getTime()/1000;return tasks.reduce((sum,task)=>task.updatedAt>=from&&task.updatedAt<to?sum+(task.tokenCount??0):sum,0)}
+function statisticsRangeBounds(range:StatisticsRange,now:number){const today=startOfLocalDay(new Date(now));const end=addLocalDays(today,1);if(range==="7天")return{start:addLocalDays(today,-6),end};if(range==="30天")return{start:addLocalDays(today,-29),end};return{start:new Date(today.getFullYear(),today.getMonth(),1),end}}
+
+function statisticsBuckets(range:StatisticsRange,tasks:RecentTask[],now:number):StatisticsBucket[]{
+  const today=startOfLocalDay(new Date(now));
+  if(range==="7天"){
+    const start=addLocalDays(today,-6);
+    return Array.from({length:7},(_,index)=>{const from=addLocalDays(start,index);const to=addLocalDays(from,1);return{label:["日","一","二","三","四","五","六"][from.getDay()],title:`${dateLabel(from)}：${compactTokenValue(taskTokensBetween(tasks,from,to))} Tokens`,value:taskTokensBetween(tasks,from,to)}});
+  }
+  if(range==="30天"){
+    const start=addLocalDays(today,-29);
+    return Array.from({length:6},(_,index)=>{const from=addLocalDays(start,index*5);const to=index===5?addLocalDays(today,1):addLocalDays(from,5);return{label:`${dateLabel(from)}–${dateLabel(addLocalDays(to,-1))}`,title:`${dateLabel(from)} 至 ${dateLabel(addLocalDays(to,-1))}：${compactTokenValue(taskTokensBetween(tasks,from,to))} Tokens`,value:taskTokensBetween(tasks,from,to)}});
+  }
+  const monthStart=new Date(today.getFullYear(),today.getMonth(),1);
+  const tomorrow=addLocalDays(today,1);
+  const count=Math.ceil(today.getDate()/7);
+  return Array.from({length:count},(_,index)=>{const from=addLocalDays(monthStart,index*7);const to=new Date(Math.min(addLocalDays(from,7).getTime(),tomorrow.getTime()));return{label:`${from.getDate()}–${addLocalDays(to,-1).getDate()}日`,title:`${dateLabel(from)} 至 ${dateLabel(addLocalDays(to,-1))}：${compactTokenValue(taskTokensBetween(tasks,from,to))} Tokens`,value:taskTokensBetween(tasks,from,to)}});
+}
 
 function formatRemaining(unixSeconds: number | undefined, now: number) {
   if (!unixSeconds) return "未连接";
@@ -88,22 +111,35 @@ function Overview({ usage, resetText, weeklyResetText, tasks }: { usage: RealUsa
 }
 
 function Tasks({ tasks,now }: { tasks:RecentTask[];now:number }) {
+  const [taskRange,setTaskRange]=useState<"today"|"week">("today");
   const today=new Date(now);
+  const start=taskRange==="today"?startOfLocalDay(today):startOfLocalWeek(now);
+  const end=addLocalDays(startOfLocalDay(today),1);
+  const visibleTasks=tasks.filter(task=>task.updatedAt>=start.getTime()/1000&&task.updatedAt<end.getTime()/1000).sort((a,b)=>b.updatedAt-a.updatedAt);
   return <div className="view-content">
-    <div className="task-toolbar"><span>今天 · {today.getMonth()+1}月{today.getDate()}日</span><b>{tasks.length} 个任务</b></div>
-    <div className="task-summary"><span>任务列表</span><strong>{formatTokens(tasks.reduce((sum,task)=>sum+(task.tokenCount??0),0))} Tokens</strong><em>每 5 分钟同步</em></div>
-    {tasks.length?<div className="task-list">{tasks.slice(0,10).map((task,index)=><article className="task-row" key={task.id}><span className="task-index">{String(index+1).padStart(2,"0")}</span><p><strong>{task.title}</strong><small>{formatRelative(task.updatedAt,now)}更新 · {formatClock(task.updatedAt)}</small></p><span className="task-token"><b>{formatTaskTokens(task)}</b><small>Tokens · {task.tokenSource==="local-session"?"本地记录":task.tokenSource==="account-estimate"?"账号估算":"暂无记录"}</small></span></article>)}</div>:<div className="empty-state">今天还没有 Codex 任务</div>}
+    <div className="task-toolbar"><div className="task-range"><button className={taskRange==="today"?"active":""} onClick={()=>setTaskRange("today")}>今天</button><button className={taskRange==="week"?"active":""} onClick={()=>setTaskRange("week")}>本周</button></div><b>{visibleTasks.length} 个任务</b></div>
+    <div className="task-summary"><span>{taskRange==="today"?`${today.getMonth()+1}月${today.getDate()}日`:"本周任务"}</span><strong>{formatTokens(visibleTasks.reduce((sum,task)=>sum+(task.tokenCount??0),0))} Tokens</strong><em>每 5 分钟同步</em></div>
+    {visibleTasks.length?<div className="task-list">{visibleTasks.slice(0,10).map((task,index)=><article className="task-row" key={task.id}><span className="task-index">{String(index+1).padStart(2,"0")}</span><p><strong>{task.title}</strong><small>{formatRelative(task.updatedAt,now)}更新 · {formatClock(task.updatedAt)}</small></p><span className="task-token"><b>{formatTaskTokens(task)}</b><small>Tokens · {task.tokenSource==="local-session"?"本地记录":task.tokenSource==="account-estimate"?"账号估算":"暂无记录"}</small></span></article>)}</div>:<div className="empty-state">{taskRange==="today"?"今天":"本周"}还没有 Codex 任务</div>}
   </div>;
 }
 
-function Statistics() {
-  const [range, setRange] = useState("7天");
+function Statistics({tasks,now}:{tasks:RecentTask[];now:number}) {
+  const [range, setRange] = useState<StatisticsRange>("7天");
+  const buckets=useMemo(()=>statisticsBuckets(range,tasks,now),[range,tasks,now]);
+  const total=buckets.reduce((sum,bucket)=>sum+bucket.value,0);
+  const max=Math.max(...buckets.map(bucket=>bucket.value),1);
+  const bounds=statisticsRangeBounds(range,now);
+  const rangeTasks=tasks.filter(task=>task.updatedAt>=bounds.start.getTime()/1000&&task.updatedAt<bounds.end.getTime()/1000);
+  const known=rangeTasks.filter(task=>task.tokenCount!==null);
+  const localCount=known.filter(task=>task.tokenSource==="local-session").length;
+  const estimatedCount=known.filter(task=>task.tokenSource==="account-estimate").length;
+  const unavailableCount=rangeTasks.length-known.length;
   return <div className="view-content">
-    <div className="view-heading"><h1>使用统计</h1><span>模拟数据</span></div>
-    <div className="range-tabs">{["7天","30天","本月"].map(item => <button key={item} className={range === item ? "active" : ""} onClick={() => setRange(item)}>{item}</button>)}</div>
-    <div className="stat-total"><span>总使用量</span><strong>{range === "7天" ? "70.2K" : range === "30天" ? "312K" : "268K"}<small> Tokens</small></strong><em>较上期 +18%</em></div>
-    <div className="bar-chart">{CHART_VALUES.map((value,index) => <div key={index} title={`${["周一","周二","周三","周四","周五","周六","周日"][index]}：${value}K Tokens`}><b>{value}K</b><i style={{height:`${value/14.2*54}px`}}/><span>{["一","二","三","四","五","六","日"][index]}</span></div>)}</div>
-    <div className="distribution"><div className="donut"/><div>{[["编程","42%",1],["研究","28%",.72],["文档","18%",.48],["其他","12%",.26]].map(([name,value,opacity]) => <span key={String(name)}><i style={{opacity:Number(opacity)}}/>{name}<b>{value}</b></span>)}</div></div>
+    <div className="view-heading"><h1>使用统计</h1><span>本机任务记录</span></div>
+    <div className="range-tabs">{(["7天","30天","本月"] as StatisticsRange[]).map(item => <button key={item} className={range === item ? "active" : ""} onClick={() => setRange(item)}>{item}</button>)}</div>
+    <div className="stat-total"><span>{range}任务 Token</span><strong>{compactTokenValue(total)}<small> Tokens</small></strong><em>{known.length}/{rangeTasks.length} 条有用量</em></div>
+    <div className="bar-chart" style={{gridTemplateColumns:`repeat(${buckets.length},1fr)`}}>{buckets.map(bucket => <div key={bucket.label} title={bucket.title}><b>{compactTokenValue(bucket.value)}</b><i style={{height:`${Math.max(8,bucket.value/max*54)}px`}}/><span>{bucket.label}</span></div>)}</div>
+    <div className="statistics-source"><strong>数据来源</strong><span><i/>本地 Session 记录<b>{localCount} 条</b></span><span><i/>账号用量估算<b>{estimatedCount} 条</b></span><span><i/>暂无 Token 数据<b>{unavailableCount} 条</b></span><small>按任务最后更新时间归入对应日期</small></div>
   </div>;
 }
 
@@ -193,7 +229,7 @@ function App() {
   const changeView=(next:PanelView)=>setView(next);
   const changeTheme=(next:ThemeName)=>{setTheme(next);localStorage.setItem("token-trace-theme",next)};
   const lastUpdatedText=lastUpdatedAt?`同步 ${new Date(lastUpdatedAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}`:"账号实时用量";
-  return <main className={`shell shell--${mode} theme-${theme}`}><MiniWidget mode={mode} usage={usage} resetText={resetText} lastUpdatedText={lastUpdatedText} onToggle={()=>void toggle()} onClose={()=>void close()}/>{mode==="expanded"&&<section className="panel"><PanelHeader view={view} onView={changeView}/>{view==="overview"?<Overview usage={usage} resetText={resetText} weeklyResetText={weeklyResetText} tasks={todayTasks}/>:view==="tasks"?<Tasks tasks={todayTasks} now={now}/>:view==="statistics"?<Statistics/>:<Settings theme={theme} onTheme={changeTheme}/>}<footer title={usageError ?? `上次${lastUpdatedText}`}><span><i className={usage?"live":"offline"}/>{usage ? tasksAvailable?"额度与任务实时":"额度实时 · 任务不可用" : "Codex 未连接"}</span><b>v0.1</b></footer></section>}</main>;
+  return <main className={`shell shell--${mode} theme-${theme}`}><MiniWidget mode={mode} usage={usage} resetText={resetText} lastUpdatedText={lastUpdatedText} onToggle={()=>void toggle()} onClose={()=>void close()}/>{mode==="expanded"&&<section className="panel"><PanelHeader view={view} onView={changeView}/>{view==="overview"?<Overview usage={usage} resetText={resetText} weeklyResetText={weeklyResetText} tasks={todayTasks}/>:view==="tasks"?<Tasks tasks={tasks} now={now}/>:view==="statistics"?<Statistics tasks={tasks} now={now}/>:<Settings theme={theme} onTheme={changeTheme}/>}<footer title={usageError ?? `上次${lastUpdatedText}`}><span><i className={usage?"live":"offline"}/>{usage ? tasksAvailable?"额度与任务实时":"额度实时 · 任务不可用" : "Codex 未连接"}</span><b>v0.1</b></footer></section>}</main>;
 }
 
 export default App;
