@@ -85,7 +85,7 @@ Token Trace 不会读取或上传 `auth.json` 的内容，不会把 API Key、�
 
 ## 当前限制
 
-- 当前重点支持 Windows；macOS 版本尚未适配和签名。
+- Windows 是当前稳定测试平台；macOS 预览版正在适配，尚未在真实 Mac 上完成验收或 Apple 签名、公证。
 - 统计页基于本机可读取的任务记录，不是 OpenAI 官方账单；缺失或已删除的历史任务无法补齐。
 - 当前尚未建立独立的长期 SQLite 历史数据库。
 - Codex App Server 协议变化可能影响兼容性。
@@ -97,6 +97,16 @@ Token Trace 不会读取或上传 `auth.json` 的内容，不会把 API Key、�
 - React 19
 - TypeScript
 - Rust
+
+## macOS 预览版
+
+项目已加入 macOS 跨平台路径发现、透明悬浮窗口配置和 Universal（Apple Silicon + Intel）自动构建。可以在 GitHub Actions 中手动运行 **Build macOS preview**，下载未签名的 `.app` / `.dmg` 测试包。
+
+未签名测试包可能被 Gatekeeper 拦截，仅建议从本仓库 Actions 下载并在测试设备上使用。正式公开发行前仍需：
+
+- 在真实 Mac 上验证 Codex App Server、额度和任务数据读取；
+- 验证窗口置顶、拖动、休眠恢复及多显示器行为；
+- 使用 Apple Developer ID 完成签名和 Notarization。
 
 ## 贡献
 
