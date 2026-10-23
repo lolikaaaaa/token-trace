@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build-universal:
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - name: Check out source
         uses: actions/checkout@v4
