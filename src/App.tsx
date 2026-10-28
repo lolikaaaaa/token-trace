@@ -16,7 +16,11 @@ type RealUsage = { primary: UsageWindow; secondary: UsageWindow | null; planType
 type RecentTask = { id: string; title: string; createdAt: number; updatedAt: number; tokenCount: number | null; tokenSource: "local-session" | "account-estimate" | null };
 type DashboardSnapshot = { usage: RealUsage; tasks: RecentTask[]; tasksAvailable: boolean };
 type StatisticsRange = "7天" | "30天" | "本月";
-type StatisticsBucket = { label: string; title: string; value: number };
+type StatisticsBucket = { label: string; title: string; value: number; taskCount: number; knownCount: number; missingCount: number };
+type SyncState = "connecting" | "live" | "retrying" | "stale" | "offline";
+
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const STALE_AFTER_MS = 7 * 60 * 1000;
 
 function isToday(unixSeconds:number,now:number){return new Date(unixSeconds*1000).toDateString()===new Date(now).toDateString()}
 function startOfLocalWeek(now:number){const today=startOfLocalDay(new Date(now));const weekday=today.getDay()||7;return addLocalDays(today,1-weekday)}
@@ -28,23 +32,34 @@ function compactTokenValue(value:number){if(value>=1_000_000)return `${(value/1_
 function startOfLocalDay(value:Date){return new Date(value.getFullYear(),value.getMonth(),value.getDate())}
 function addLocalDays(value:Date,days:number){const next=new Date(value);next.setDate(next.getDate()+days);return next}
 function dateLabel(value:Date){return `${value.getMonth()+1}/${value.getDate()}`}
-function taskTokensBetween(tasks:RecentTask[],start:Date,end:Date){const from=start.getTime()/1000;const to=end.getTime()/1000;return tasks.reduce((sum,task)=>task.updatedAt>=from&&task.updatedAt<to?sum+(task.tokenCount??0):sum,0)}
 function statisticsRangeBounds(range:StatisticsRange,now:number){const today=startOfLocalDay(new Date(now));const end=addLocalDays(today,1);if(range==="7天")return{start:addLocalDays(today,-6),end};if(range==="30天")return{start:addLocalDays(today,-29),end};return{start:new Date(today.getFullYear(),today.getMonth(),1),end}}
+
+function makeStatisticsBucket(label:string,from:Date,to:Date,tasks:RecentTask[]):StatisticsBucket{
+  const fromSeconds=from.getTime()/1000;
+  const toSeconds=to.getTime()/1000;
+  const rangeTasks=tasks.filter(task=>task.updatedAt>=fromSeconds&&task.updatedAt<toSeconds);
+  const known=rangeTasks.filter(task=>task.tokenCount!==null);
+  const missingCount=rangeTasks.length-known.length;
+  const value=known.reduce((sum,task)=>sum+(task.tokenCount??0),0);
+  const dates=`${dateLabel(from)} 至 ${dateLabel(addLocalDays(to,-1))}`;
+  const detail=rangeTasks.length===0?"没有读取到任务":known.length===0?`${rangeTasks.length} 条任务均缺少 Token 记录`:`${compactTokenValue(value)} Tokens${missingCount?`，另有 ${missingCount} 条缺少 Token`:""}`;
+  return{label,title:`${dates}：${detail}`,value,taskCount:rangeTasks.length,knownCount:known.length,missingCount};
+}
 
 function statisticsBuckets(range:StatisticsRange,tasks:RecentTask[],now:number):StatisticsBucket[]{
   const today=startOfLocalDay(new Date(now));
   if(range==="7天"){
     const start=addLocalDays(today,-6);
-    return Array.from({length:7},(_,index)=>{const from=addLocalDays(start,index);const to=addLocalDays(from,1);return{label:["日","一","二","三","四","五","六"][from.getDay()],title:`${dateLabel(from)}：${compactTokenValue(taskTokensBetween(tasks,from,to))} Tokens`,value:taskTokensBetween(tasks,from,to)}});
+    return Array.from({length:7},(_,index)=>{const from=addLocalDays(start,index);const to=addLocalDays(from,1);return makeStatisticsBucket(["日","一","二","三","四","五","六"][from.getDay()],from,to,tasks)});
   }
   if(range==="30天"){
     const start=addLocalDays(today,-29);
-    return Array.from({length:6},(_,index)=>{const from=addLocalDays(start,index*5);const to=index===5?addLocalDays(today,1):addLocalDays(from,5);return{label:`${dateLabel(from)}–${dateLabel(addLocalDays(to,-1))}`,title:`${dateLabel(from)} 至 ${dateLabel(addLocalDays(to,-1))}：${compactTokenValue(taskTokensBetween(tasks,from,to))} Tokens`,value:taskTokensBetween(tasks,from,to)}});
+    return Array.from({length:6},(_,index)=>{const from=addLocalDays(start,index*5);const to=index===5?addLocalDays(today,1):addLocalDays(from,5);return makeStatisticsBucket(`${dateLabel(from)}–${dateLabel(addLocalDays(to,-1))}`,from,to,tasks)});
   }
   const monthStart=new Date(today.getFullYear(),today.getMonth(),1);
   const tomorrow=addLocalDays(today,1);
   const count=Math.ceil(today.getDate()/7);
-  return Array.from({length:count},(_,index)=>{const from=addLocalDays(monthStart,index*7);const to=new Date(Math.min(addLocalDays(from,7).getTime(),tomorrow.getTime()));return{label:`${from.getDate()}–${addLocalDays(to,-1).getDate()}日`,title:`${dateLabel(from)} 至 ${dateLabel(addLocalDays(to,-1))}：${compactTokenValue(taskTokensBetween(tasks,from,to))} Tokens`,value:taskTokensBetween(tasks,from,to)}});
+  return Array.from({length:count},(_,index)=>{const from=addLocalDays(monthStart,index*7);const to=new Date(Math.min(addLocalDays(from,7).getTime(),tomorrow.getTime()));return makeStatisticsBucket(`${from.getDate()}–${addLocalDays(to,-1).getDate()}日`,from,to,tasks)});
 }
 
 function formatRemaining(unixSeconds: number | undefined, now: number) {
@@ -74,10 +89,10 @@ function UsageLine({ label, value }: { label: string; value: number | null }) {
   return <div className="usage-line"><span>{label}</span><div className="micro-track"><i style={{ width: `${value ?? 0}%` }} /></div><strong>{value === null ? "--" : `${Math.round(value)}%`}</strong></div>;
 }
 
-function MiniWidget({ mode, usage, resetText, lastUpdatedText, onToggle, onClose }: { mode: WindowMode; usage: RealUsage | null; resetText: string; lastUpdatedText: string; onToggle: () => void; onClose: () => void }) {
+function MiniWidget({ mode, usage, resetText, syncLabel, syncState, onToggle, onClose }: { mode: WindowMode; usage: RealUsage | null; resetText: string; syncLabel: string; syncState: SyncState; onToggle: () => void; onClose: () => void }) {
   return <header className="mini-widget" data-tauri-drag-region>
     <div className="app-mark" data-tauri-drag-region><img src={rabbitIcon} alt="Token Trace 奔跑兔子"/></div>
-    <div className="identity" data-tauri-drag-region><b data-tauri-drag-region>Token Trace</b><span data-tauri-drag-region>{usage ? lastUpdatedText : "等待连接 Codex"}</span></div>
+    <div className={`identity sync-${syncState}`} data-tauri-drag-region><b data-tauri-drag-region>Token Trace</b><span data-tauri-drag-region>{syncLabel}</span></div>
     <div className="usage-cluster" aria-label="剩余用量"><UsageLine label="5h" value={usage?.primary.remainingPercent ?? null}/><UsageLine label="7d" value={usage?.secondary?.remainingPercent ?? null}/></div>
     <div className="countdown"><span>RESET</span><strong>{resetText}</strong></div>
     <div className="window-actions"><button className="icon-button toggle-button" aria-label="展开或收起" onClick={onToggle}>{mode === "mini" ? "⌄" : "⌃"}</button><button className="icon-button close-button" aria-label="关闭" onClick={onClose}>×</button></div>
@@ -98,11 +113,11 @@ function CompactUsage({ usage, resetText, weeklyResetText }: { usage: RealUsage 
   </div>;
 }
 
-function Overview({ usage, resetText, weeklyResetText, tasks }: { usage: RealUsage | null; resetText: string; weeklyResetText: string; tasks:RecentTask[] }) {
+function Overview({ usage, resetText, weeklyResetText, tasks, syncState }: { usage: RealUsage | null; resetText: string; weeklyResetText: string; tasks:RecentTask[]; syncState:SyncState }) {
   const latest=tasks[0];
   const totalTokens=tasks.reduce((sum,task)=>sum+(task.tokenCount??0),0);
   return <div className="view-content">
-    <div className="view-heading"><h1>使用概览</h1><span className="mock-badge"><i/>{usage ? "Codex 实时" : "未连接"}</span></div>
+    <div className="view-heading"><h1>使用概览</h1><span className={`mock-badge sync-${syncState}`}><i/>{syncState==="live"?"Codex 实时":syncState==="stale"?"数据已过期":syncState==="retrying"?"刷新失败":syncState==="connecting"?"正在连接":"未连接"}</span></div>
     <CompactUsage usage={usage} resetText={resetText} weeklyResetText={weeklyResetText}/>
     <div className="current-task"><span className="line-icon"><Icon name="clock"/></span><span><small>最近任务</small><strong>{latest?.title??"今天还没有 Codex 任务"}</strong><em>{latest?`${formatTaskTokens(latest)} Tokens · ${formatRelative(latest.updatedAt,Date.now())}`:"等待新任务"}</em></span></div>
     <div className="overview-stats"><article><small>今日任务</small><strong>{tasks.length}</strong><span>按任务逐条显示</span></article><article><small>今日任务 Token</small><strong>{formatTokens(totalTokens)}</strong><span>Codex 本地记录</span></article></div>
@@ -137,8 +152,8 @@ function Statistics({tasks,now}:{tasks:RecentTask[];now:number}) {
   return <div className="view-content">
     <div className="view-heading"><h1>使用统计</h1><span>本机任务记录</span></div>
     <div className="range-tabs">{(["7天","30天","本月"] as StatisticsRange[]).map(item => <button key={item} className={range === item ? "active" : ""} onClick={() => setRange(item)}>{item}</button>)}</div>
-    <div className="stat-total"><span>{range}任务 Token</span><strong>{compactTokenValue(total)}<small> Tokens</small></strong><em>{known.length}/{rangeTasks.length} 条有用量</em></div>
-    <div className="bar-chart" style={{gridTemplateColumns:`repeat(${buckets.length},1fr)`}}>{buckets.map(bucket => <div key={bucket.label} title={bucket.title}><b>{compactTokenValue(bucket.value)}</b><i style={{height:`${Math.max(8,bucket.value/max*54)}px`}}/><span>{bucket.label}</span></div>)}</div>
+    <div className="stat-total"><span>{range}任务 Token</span><strong>{rangeTasks.length>0&&known.length===0?"--":compactTokenValue(total)}<small> Tokens</small></strong><em>{known.length}/{rangeTasks.length} 条有用量</em></div>
+    <div className="bar-chart" style={{gridTemplateColumns:`repeat(${buckets.length},1fr)`}}>{buckets.map(bucket => <div key={bucket.label} title={bucket.title}><b>{bucket.taskCount>0&&bucket.knownCount===0?"--":compactTokenValue(bucket.value)}</b><i className={bucket.taskCount>0&&bucket.knownCount===0?"unavailable":""} style={{height:`${Math.max(8,bucket.value/max*54)}px`}}/><span>{bucket.label}</span></div>)}</div>
     <div className="statistics-source"><strong>数据来源</strong><span><i/>本地 Session 记录<b>{localCount} 条</b></span><span><i/>账号用量估算<b>{estimatedCount} 条</b></span><span><i/>暂无 Token 数据<b>{unavailableCount} 条</b></span><small>按任务最后更新时间归入对应日期</small></div>
   </div>;
 }
@@ -148,7 +163,7 @@ function Settings({ theme, onTheme }: { theme: ThemeName; onTheme: (theme: Theme
   const rows: { icon: IconName; title: string; detail: string; end: React.ReactNode; action?: () => void }[] = [
     { icon:"pin", title:"始终置顶", detail:"让组件保持在其他窗口上方", end:<em>已开启</em> },
     { icon:"sparkles", title:"AI 自动分类（可选）", detail:"关闭时不影响任何核心功能", end:<i className={`switch ${aiEnabled ? "on" : ""}`}/>, action:()=>setAiEnabled(value=>!value) },
-    { icon:"shield", title:"数据与隐私", detail:"本地 Mock 数据，不上传", end:<Icon name="chevron" size={14}/> },
+    { icon:"shield", title:"数据与隐私", detail:"本地读取，不上传凭证", end:<Icon name="chevron" size={14}/> },
   ];
   return <div className="view-content settings-view"><div className="view-heading"><h1>组件设置</h1><span>Local-first</span></div><div className="theme-block"><div><Icon name="palette"/><span><strong>外观与主题</strong><small>选择后立即应用</small></span></div><div className="theme-options"><button className={theme==="teal"?"selected":""} onClick={()=>onTheme("teal")}><i className="swatch teal"/>深青</button><button className={theme==="violet"?"selected":""} onClick={()=>onTheme("violet")}><i className="swatch violet"/>浅紫</button><button className={theme==="sky"?"selected":""} onClick={()=>onTheme("sky")}><i className="swatch sky"/>浅蓝</button></div></div><div className="settings-list">{rows.map(row => <button key={row.title} onClick={row.action}><span className="line-icon"><Icon name={row.icon}/></span><p><strong>{row.title}</strong><small>{row.detail}</small></p>{row.end}</button>)}</div><div className="privacy-note"><Icon name="shield" size={14}/>无需账户 · 不接服务器 · 数据保留在本机</div></div>;
 }
@@ -177,7 +192,7 @@ function App() {
     const refreshUsage = async (force=false) => {
       if (requestInFlight.current) return;
       const currentTime=Date.now();
-      if (!force && currentTime-lastAttemptAt.current<5*60*1000) return;
+      if (!force && currentTime-lastAttemptAt.current<REFRESH_INTERVAL_MS) return;
       lastAttemptAt.current=currentTime;
       requestInFlight.current = true;
       try {
@@ -212,12 +227,13 @@ function App() {
       }
     };
     const initial = window.setTimeout(()=>void refreshUsage(true),500);
-    const heartbeat = window.setInterval(()=>void refreshUsage(),30_000);
-    const wakeRefresh=()=>void refreshUsage();
+    const heartbeat = window.setInterval(()=>void refreshUsage(true),REFRESH_INTERVAL_MS);
+    const wakeRefresh=()=>void refreshUsage(true);
+    const visibilityRefresh=()=>{if(document.visibilityState==="visible")void refreshUsage(true)};
     addEventListener("focus",wakeRefresh);
     addEventListener("pageshow",wakeRefresh);
-    document.addEventListener("visibilitychange",wakeRefresh);
-    return()=>{cancelled=true;window.clearTimeout(initial);window.clearInterval(heartbeat);removeEventListener("focus",wakeRefresh);removeEventListener("pageshow",wakeRefresh);document.removeEventListener("visibilitychange",wakeRefresh)};
+    document.addEventListener("visibilitychange",visibilityRefresh);
+    return()=>{cancelled=true;window.clearTimeout(initial);window.clearInterval(heartbeat);removeEventListener("focus",wakeRefresh);removeEventListener("pageshow",wakeRefresh);document.removeEventListener("visibilitychange",visibilityRefresh)};
   },[]);
   useEffect(()=>{
     const clock=setInterval(()=>setNow(Date.now()),1000);
@@ -228,8 +244,13 @@ function App() {
   useEffect(()=>{const key=(event:KeyboardEvent)=>{if(event.key==="Escape"&&mode==="expanded")void toggle()};addEventListener("keydown",key);return()=>removeEventListener("keydown",key)},[mode]);
   const changeView=(next:PanelView)=>setView(next);
   const changeTheme=(next:ThemeName)=>{setTheme(next);localStorage.setItem("token-trace-theme",next)};
-  const lastUpdatedText=lastUpdatedAt?`同步 ${new Date(lastUpdatedAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}`:"账号实时用量";
-  return <main className={`shell shell--${mode} theme-${theme}`}><MiniWidget mode={mode} usage={usage} resetText={resetText} lastUpdatedText={lastUpdatedText} onToggle={()=>void toggle()} onClose={()=>void close()}/>{mode==="expanded"&&<section className="panel"><PanelHeader view={view} onView={changeView}/>{view==="overview"?<Overview usage={usage} resetText={resetText} weeklyResetText={weeklyResetText} tasks={todayTasks}/>:view==="tasks"?<Tasks tasks={tasks} now={now}/>:view==="statistics"?<Statistics tasks={tasks} now={now}/>:<Settings theme={theme} onTheme={changeTheme}/>}<footer title={usageError ?? `上次${lastUpdatedText}`}><span><i className={usage?"live":"offline"}/>{usage ? tasksAvailable?"额度与任务实时":"额度实时 · 任务不可用" : "Codex 未连接"}</span><b>v0.1</b></footer></section>}</main>;
+  const lastSuccessClock=lastUpdatedAt?new Date(lastUpdatedAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"}):null;
+  const isStale=lastUpdatedAt!==null&&now-lastUpdatedAt>STALE_AFTER_MS;
+  const syncState:SyncState=!usage?(usageError?"offline":"connecting"):isStale?"stale":usageError?"retrying":"live";
+  const syncLabel=syncState==="live"?`同步 ${lastSuccessClock}`:syncState==="retrying"?`刷新失败 · ${lastSuccessClock}`:syncState==="stale"?"数据已过期":syncState==="offline"?"连接失败":"正在连接 Codex";
+  const footerLabel=syncState==="live"?(tasksAvailable?"额度与任务实时":"额度实时 · 任务不可用"):syncState==="retrying"?"刷新失败 · 显示上次数据":syncState==="stale"?"数据已过期 · 等待重试":syncState==="offline"?"Codex 未连接":"正在连接 Codex";
+  const statusTitle=[lastSuccessClock?`上次成功同步 ${lastSuccessClock}`:null,usageError?`最近错误：${usageError}`:null].filter(Boolean).join("；");
+  return <main className={`shell shell--${mode} theme-${theme}`}><MiniWidget mode={mode} usage={usage} resetText={resetText} syncLabel={syncLabel} syncState={syncState} onToggle={()=>void toggle()} onClose={()=>void close()}/>{mode==="expanded"&&<section className="panel"><PanelHeader view={view} onView={changeView}/>{view==="overview"?<Overview usage={usage} resetText={resetText} weeklyResetText={weeklyResetText} tasks={todayTasks} syncState={syncState}/>:view==="tasks"?<Tasks tasks={tasks} now={now}/>:view==="statistics"?<Statistics tasks={tasks} now={now}/>:<Settings theme={theme} onTheme={changeTheme}/>}<footer title={statusTitle}><span><i className={syncState==="live"?"live":syncState}/>{footerLabel}</span><b>v0.1</b></footer></section>}</main>;
 }
 
 export default App;
