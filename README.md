@@ -4,11 +4,11 @@
 
 ![Token Trace：Windows 桌面 Codex 用量小组件](docs/images/token-trace-hero.png)
 
-[![Latest release](https://img.shields.io/github/v/release/lolikaaaaa/token-trace?include_prereleases&label=最新版&color=20a9b5)](https://github.com/lolikaaaaa/token-trace/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/lolikaaaaa/token-trace?include_prereleases&label=最新版&color=20a9b5)](https://github.com/lolikaaaaa/token-trace/releases)
 ![Platform](https://img.shields.io/badge/平台-Windows%2010%20%2F%2011-42a5c6)
 ![Local first](https://img.shields.io/badge/数据-Local--first-8a74d6)
 
-[⬇️ 下载最新版](https://github.com/lolikaaaaa/token-trace/releases/latest) · [🐛 报告问题](https://github.com/lolikaaaaa/token-trace/issues) · [⭐ 喜欢的话点个 Star](https://github.com/lolikaaaaa/token-trace)
+[⬇️ 下载最新版](https://github.com/lolikaaaaa/token-trace/releases) · [🐛 报告问题](https://github.com/lolikaaaaa/token-trace/issues) · [⭐ 喜欢的话点个 Star](https://github.com/lolikaaaaa/token-trace)
 
 第一个小工具试试水，不要骂嘤嘤。不知道有没有什么 bug。会持续更新！！
 
@@ -32,6 +32,7 @@
 - 无边框、透明背景、始终置顶的桌面小组件
 - Mini Widget 与原地展开面板
 - 真实 5h / 7d 剩余比例和 Reset 倒计时
+- Mini Widget 同时显示 5 小时和每周额度的重置倒计时
 - 今天 / 本周任务切换，最多显示 10 条并支持内部滚动
 - 每个任务对应的 Token 总量和更新时间
 - 青色、浅紫、浅蓝三种主题
@@ -57,7 +58,7 @@
 
 请从仓库的 **Releases** 页面下载最新安装包：
 
-1. 下载 `Token-Trace-v0.1.0-beta.6-Setup.exe`。
+1. 从 [Releases](https://github.com/lolikaaaaa/token-trace/releases) 下载最新版 Windows x64 `-setup.exe` 安装包。
 2. 双击安装；如果 Windows SmartScreen 提示未知发布者，请确认文件来自本仓库后再决定是否继续。
 3. 点击箭头展开或收起，拖动顶部区域可移动组件。
 4. 不再使用时可以从 Windows“已安装的应用”中卸载。

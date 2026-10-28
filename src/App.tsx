@@ -70,6 +70,15 @@ function formatRemaining(unixSeconds: number | undefined, now: number) {
   return hours > 0 ? `${hours}小时${mins.toString().padStart(2, "0")}分` : `${mins}分钟`;
 }
 
+function formatWeeklyRemaining(unixSeconds: number | undefined, now: number) {
+  if (!unixSeconds) return "未连接";
+  const minutes = Math.max(0, Math.ceil((unixSeconds * 1000 - now) / 60000));
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  return days > 0 ? `${days}天${hours}时${mins.toString().padStart(2, "0")}分` : `${hours}时${mins.toString().padStart(2, "0")}分`;
+}
+
 function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
   const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
   const paths: Record<IconName, React.ReactNode> = {
@@ -89,12 +98,12 @@ function UsageLine({ label, value }: { label: string; value: number | null }) {
   return <div className="usage-line"><span>{label}</span><div className="micro-track"><i style={{ width: `${value ?? 0}%` }} /></div><strong>{value === null ? "--" : `${Math.round(value)}%`}</strong></div>;
 }
 
-function MiniWidget({ mode, usage, resetText, syncLabel, syncState, onToggle, onClose }: { mode: WindowMode; usage: RealUsage | null; resetText: string; syncLabel: string; syncState: SyncState; onToggle: () => void; onClose: () => void }) {
+function MiniWidget({ mode, usage, resetText, weeklyResetText, syncLabel, syncState, onToggle, onClose }: { mode: WindowMode; usage: RealUsage | null; resetText: string; weeklyResetText: string; syncLabel: string; syncState: SyncState; onToggle: () => void; onClose: () => void }) {
   return <header className="mini-widget" data-tauri-drag-region>
     <div className="app-mark" data-tauri-drag-region><img src={rabbitIcon} alt="Token Trace 奔跑兔子"/></div>
     <div className={`identity sync-${syncState}`} data-tauri-drag-region><b data-tauri-drag-region>Token Trace</b><span data-tauri-drag-region>{syncLabel}</span></div>
     <div className="usage-cluster" aria-label="剩余用量"><UsageLine label="5h" value={usage?.primary.remainingPercent ?? null}/><UsageLine label="7d" value={usage?.secondary?.remainingPercent ?? null}/></div>
-    <div className="countdown"><span>RESET</span><strong>{resetText}</strong></div>
+    <div className="countdown"><span>RESET</span><strong>{resetText}</strong><small title="7 天额度重置倒计时">{weeklyResetText}</small></div>
     <div className="window-actions"><button className="icon-button toggle-button" aria-label="展开或收起" onClick={onToggle}>{mode === "mini" ? "⌄" : "⌃"}</button><button className="icon-button close-button" aria-label="关闭" onClick={onClose}>×</button></div>
   </header>;
 }
@@ -184,6 +193,7 @@ function App() {
   const [now,setNow] = useState(Date.now());
   const resetText = formatRemaining(usage?.primary.resetsAt,now);
   const weeklyResetText = formatRemaining(usage?.secondary?.resetsAt,now);
+  const miniWeeklyResetText = formatWeeklyRemaining(usage?.secondary?.resetsAt,now);
   const todayTasks=useMemo(()=>tasks.filter(task=>isToday(task.updatedAt,now)).sort((a,b)=>b.updatedAt-a.updatedAt),[tasks,now]);
   useEffect(()=>{
     if (pollingStarted.current) return;
@@ -250,7 +260,7 @@ function App() {
   const syncLabel=syncState==="live"?`同步 ${lastSuccessClock}`:syncState==="retrying"?`刷新失败 · ${lastSuccessClock}`:syncState==="stale"?"数据已过期":syncState==="offline"?"连接失败":"正在连接 Codex";
   const footerLabel=syncState==="live"?(tasksAvailable?"额度与任务实时":"额度实时 · 任务不可用"):syncState==="retrying"?"刷新失败 · 显示上次数据":syncState==="stale"?"数据已过期 · 等待重试":syncState==="offline"?"Codex 未连接":"正在连接 Codex";
   const statusTitle=[lastSuccessClock?`上次成功同步 ${lastSuccessClock}`:null,usageError?`最近错误：${usageError}`:null].filter(Boolean).join("；");
-  return <main className={`shell shell--${mode} theme-${theme}`}><MiniWidget mode={mode} usage={usage} resetText={resetText} syncLabel={syncLabel} syncState={syncState} onToggle={()=>void toggle()} onClose={()=>void close()}/>{mode==="expanded"&&<section className="panel"><PanelHeader view={view} onView={changeView}/>{view==="overview"?<Overview usage={usage} resetText={resetText} weeklyResetText={weeklyResetText} tasks={todayTasks} syncState={syncState}/>:view==="tasks"?<Tasks tasks={tasks} now={now}/>:view==="statistics"?<Statistics tasks={tasks} now={now}/>:<Settings theme={theme} onTheme={changeTheme}/>}<footer title={statusTitle}><span><i className={syncState==="live"?"live":syncState}/>{footerLabel}</span><b>v0.1</b></footer></section>}</main>;
+  return <main className={`shell shell--${mode} theme-${theme}`}><MiniWidget mode={mode} usage={usage} resetText={resetText} weeklyResetText={miniWeeklyResetText} syncLabel={syncLabel} syncState={syncState} onToggle={()=>void toggle()} onClose={()=>void close()}/>{mode==="expanded"&&<section className="panel"><PanelHeader view={view} onView={changeView}/>{view==="overview"?<Overview usage={usage} resetText={resetText} weeklyResetText={weeklyResetText} tasks={todayTasks} syncState={syncState}/>:view==="tasks"?<Tasks tasks={tasks} now={now}/>:view==="statistics"?<Statistics tasks={tasks} now={now}/>:<Settings theme={theme} onTheme={changeTheme}/>}<footer title={statusTitle}><span><i className={syncState==="live"?"live":syncState}/>{footerLabel}</span><b>v0.1</b></footer></section>}</main>;
 }
 
 export default App;

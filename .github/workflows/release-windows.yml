@@ -1,0 +1,38 @@
+name: Release Windows beta
+
+on:
+  push:
+    tags:
+      - 'v0.1.0-beta.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Token Trace ${{ github.ref_name }}
+          releaseBody: |
+            🐰 小兔子又前进了一步！
+
+            Mini Widget 现在同时显示 5 小时和每周额度的 Reset 倒计时。
+            每周倒计时位于主倒计时下方，使用真实的每周重置时间计算。
+
+            下载下方 Windows x64 的 `-setup.exe` 文件即可试用。
+            这是尚未签名的测试版；遇到问题欢迎提交 Issue。
+          prerelease: true
+          releaseDraft: false
+          args: --bundles nsis

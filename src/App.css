@@ -67,7 +67,7 @@ button { font: inherit; }
 .mini-widget {
   height: 56px;
   display: grid;
-  grid-template-columns: 31px 82px 1fr 64px 48px;
+  grid-template-columns: 31px 72px 1fr 83px 48px;
   align-items: center;
   gap: 7px;
   padding: 6px 8px;
@@ -88,9 +88,10 @@ button { font: inherit; }
 .micro-track, .usage-bar { overflow: hidden; border-radius: 99px; background: rgba(141, 235, 239, .13); }
 .micro-track { height: 3px; }
 .micro-track i, .usage-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--cyan-500), var(--cyan-200)); }
-.countdown { display: grid; gap: 2px; }
+.countdown { display: grid; gap: 1px; min-width: 0; align-content: center; }
 .countdown span { color: #74979a; font: 650 8px/1 Consolas; letter-spacing: .06em; }
 .countdown strong { color: var(--cyan-200); font: 650 10px/1.1 "Microsoft YaHei UI"; white-space: nowrap; }
+.countdown small { color: color-mix(in srgb, var(--cyan-200) 70%, black); font: 500 8px/1.1 "Microsoft YaHei UI"; white-space: nowrap; }
 .window-actions { display: flex; gap: 3px; }
 .icon-button { width: 22px; height: 25px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 7px; color: #a3c1c3; background: transparent; cursor: pointer; }
 .icon-button:hover { color: var(--cyan-100); background: rgba(var(--accent-rgb), .13); }
